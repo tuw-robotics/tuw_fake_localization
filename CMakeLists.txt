@@ -16,7 +16,9 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(lifecycle_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
-add_executable(fake_localization src/fake_localization.cpp)
+include_directories(include)
+
+add_executable(fake_localization src/fake_localization.cpp src/standalone_fake_localization.cpp)
 target_include_directories(fake_localization PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
