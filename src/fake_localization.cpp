@@ -46,7 +46,7 @@ FakeLocalization::on_configure(const rclcpp_lifecycle::State &)
   this->get_parameter<double>("offest_x", offest_x);
   this->get_parameter<double>("offest_y", offest_y);
   this->get_parameter<double>("offest_yaw", offest_yaw);
-  RCLCPP_INFO(get_logger(), "The offest is set on: [%f m, %f m, %f rad]", offest_x, offest_y, offest_yaw);
+  RCLCPP_INFO(get_logger(), "The offest [x, y, yaw] is set on: [%f m, %f m, %f rad]", offest_x, offest_y, offest_yaw);
 
   tf2::Quaternion q;
   q.setRPY(0.0, 0.0, -offest_yaw);
