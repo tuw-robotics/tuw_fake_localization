@@ -7,7 +7,9 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(nav2_util REQUIRED)
@@ -17,25 +19,43 @@ find_package(lifecycle_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
 include_directories(include)
-
-add_executable(fake_localization src/fake_localization.cpp src/standalone_fake_localization.cpp)
+add_library(fake_localization src/fake_localization.cpp)
 target_include_directories(fake_localization PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-target_compile_features(fake_localization PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(fake_localization PUBLIC c_std_99 cxx_std_17) 
 ament_target_dependencies(
   fake_localization
   "lifecycle_msgs"
   "rclcpp_lifecycle"
+  "tf2"
   "tf2_ros"
+  "tf2_geometry_msgs"
   "nav_msgs"
-  "nav2_msgs"
-  "nav2_util"
   "rclcpp"
   "std_msgs"
 )
 
-install(TARGETS fake_localization
+
+add_executable(fake_localization_node  src/standalone_fake_localization.cpp)
+target_include_directories(fake_localization_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(fake_localization_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_link_libraries(fake_localization_node fake_localization)
+ament_target_dependencies(
+  fake_localization_node
+  "lifecycle_msgs"
+  "rclcpp_lifecycle"
+  "tf2"
+  "tf2_ros"
+  "tf2_geometry_msgs"
+  "nav_msgs"
+  "rclcpp"
+  "std_msgs"
+)
+
+install(TARGETS fake_localization_node
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)

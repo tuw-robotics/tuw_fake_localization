@@ -17,10 +17,7 @@
 #include "tf2_ros/transform_broadcaster.h"
 #include "tf2_ros/transform_listener.h"
 #include "tf2_ros/create_timer_ros.h"
-#include "nav2_util/geometry_utils.hpp"
-#include "nav2_util/string_utils.hpp"
 
-#include "std_msgs/msg/string.hpp"
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 
@@ -68,14 +65,25 @@ private:
   }
 
   void callback_odom(const nav_msgs::msg::Odometry::SharedPtr msg_odom);
+  void callback_ground_truth(const nav_msgs::msg::Odometry::SharedPtr msg_odom);
 
+  void sendWorldToMapTransform(const tf2::TimePoint &transform_expiration);
   void sendMapToOdomTransform(const tf2::TimePoint &transform_expiration);
 
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_;
-  std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-  std::string global_frame_id_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_ground_truth_;
+  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_{nullptr};
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
+
+  std::string world_frame_id_;
+  std::string map_frame_id_;
   std::string odom_frame_id_;
   std::string base_frame_id_;
   Mode mode_;
-  tf2::Transform offset_tf_;
+  tf2::Transform tf_world_base_;
+  tf2::Transform tf_world_map_;
+  tf2::Transform tf_map_odom_;
+  tf2::Transform tf_odom_base_;
+  geometry_msgs::msg::TransformStamped tf_stamped_odom_;
+  geometry_msgs::msg::TransformStamped tf_stamped_ground_truth_;
 };

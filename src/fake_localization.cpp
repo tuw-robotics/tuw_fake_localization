@@ -1,4 +1,5 @@
 #include "tuw_fake_localization/fake_localization.hpp"
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 using namespace std::chrono_literals;
 
@@ -8,13 +9,17 @@ FakeLocalization::FakeLocalization(const std::string &node_name, bool intra_proc
     : rclcpp_lifecycle::LifecycleNode(node_name, rclcpp::NodeOptions().use_intra_process_comms(intra_process_comms))
 {
 
-  declare_default_parameter<std::string>("global_frame_id", "/map", "The frame in which to publish the global_frame_id→odom_frame_id transform over tf.");
+  declare_default_parameter<std::string>("world_frame_id", "world", "The frame in which to publish the ground truth odom is published.");
+  declare_default_parameter<std::string>("map_frame_id", "map", "The frame in which to publish the map_frame_id → odom_frame_id transform over tf.");
   declare_default_parameter<std::string>("odom_frame_id", "odom", "The name of the odometric frame of the robot");
   declare_default_parameter<std::string>("base_frame_id", "base_link", "The base frame of the robot");
   declare_default_parameter<std::string>("mode", "perfect_odom", "perfect_odom");
-  declare_default_parameter<double>("offest_x", 0.0, "The x offset between the origin of the simulator coordinate frame and the map coordinate frame published by fake_localization.");
-  declare_default_parameter<double>("offest_y", 0.0, "The y offset between the origin of the simulator coordinate frame and the map coordinate frame published by fake_localization.");
-  declare_default_parameter<double>("offest_yaw", 0.0, "The yaw offset between the origin of the simulator coordinate frame and the map coordinate frame published by fake_localization.");
+  declare_default_parameter<double>("offest_x", 0.0, "The x offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
+  declare_default_parameter<double>("offest_y", 0.0, "The y offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
+  declare_default_parameter<double>("offest_z", 0.0, "The z offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
+  declare_default_parameter<double>("offest_yaw", 0.0, "The yaw offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
+  declare_default_parameter<double>("offest_pitch", 0.0, "The pitch offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
+  declare_default_parameter<double>("offest_roll", 0.0, "The roll offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
 }
 
 rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
@@ -35,22 +40,32 @@ FakeLocalization::on_configure(const rclcpp_lifecycle::State &)
   }
 
 
-  this->get_parameter<std::string>("global_frame_id", global_frame_id_);
-  RCLCPP_INFO(get_logger(), "global_frame_id is set on: [%s]", global_frame_id_.c_str());
+  this->get_parameter<std::string>("world_frame_id", world_frame_id_);
+  RCLCPP_INFO(get_logger(), "world_frame_id is set on: [%s]", world_frame_id_.c_str());
+  this->get_parameter<std::string>("map_frame_id", map_frame_id_);
+  RCLCPP_INFO(get_logger(), "map_frame_id is set on: [%s]", map_frame_id_.c_str());
   this->get_parameter<std::string>("odom_frame_id", odom_frame_id_);
   RCLCPP_INFO(get_logger(), "odom_frame_id is set on: [%s]", odom_frame_id_.c_str());
   this->get_parameter<std::string>("base_frame_id", base_frame_id_);
   RCLCPP_INFO(get_logger(), "base_frame_id is set on: [%s]", base_frame_id_.c_str());
 
-  double offest_x, offest_y, offest_yaw;
+  double offest_x, offest_y, offest_z, offest_yaw, offest_pitch, offest_roll;
   this->get_parameter<double>("offest_x", offest_x);
   this->get_parameter<double>("offest_y", offest_y);
+  this->get_parameter<double>("offest_y", offest_z);
+  this->get_parameter<double>("offest_roll", offest_roll);
+  this->get_parameter<double>("offest_pitch", offest_pitch);
   this->get_parameter<double>("offest_yaw", offest_yaw);
-  RCLCPP_INFO(get_logger(), "The offest [x, y, yaw] is set on: [%f m, %f m, %f rad]", offest_x, offest_y, offest_yaw);
+  RCLCPP_INFO(get_logger(), 
+              "The offest [x, y, z; r, p y] is set on: [%f m, %f m, %f m; %f rad, %f rad, %f rad]", 
+              offest_x, offest_y, offest_y, offest_roll, offest_pitch, offest_yaw);
 
   tf2::Quaternion q;
-  q.setRPY(0.0, 0.0, -offest_yaw);
-  offset_tf_ = tf2::Transform(q, tf2::Vector3(-offest_x, -offest_y, 0.0));
+  q.setRPY(-offest_roll, -offest_pitch, -offest_yaw);
+  tf_world_map_ = tf2::Transform(q, tf2::Vector3(-offest_x, -offest_y, -offest_z));
+
+  tf_buffer_ =  std::make_unique<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(shared_from_this());
 
@@ -65,7 +80,8 @@ FakeLocalization::on_activate(const rclcpp_lifecycle::State &state)
 
   RCUTILS_LOG_INFO_NAMED(get_name(), "on_activate() is called.");
 
-  sub_odom_ = create_subscription<nav_msgs::msg::Odometry>("base_pose_ground_truth", 10, std::bind(&FakeLocalization::callback_odom, this, _1));
+
+  sub_ground_truth_ = create_subscription<nav_msgs::msg::Odometry>("ground_truth", 10, std::bind(&FakeLocalization::callback_ground_truth, this, _1));
 
   return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
 }
@@ -86,8 +102,9 @@ FakeLocalization::on_cleanup(const rclcpp_lifecycle::State &)
   // In our cleanup phase, we release the shared pointers to the
   // timer and publisher. These entities are no longer available
   // and our node is "clean".
-  sub_odom_.reset();
+  sub_ground_truth_.reset();
   tf_broadcaster_.reset();
+  tf_listener_.reset();
 
   RCUTILS_LOG_INFO_NAMED(get_name(), "on cleanup is called.");
 
@@ -97,8 +114,9 @@ FakeLocalization::on_cleanup(const rclcpp_lifecycle::State &)
 rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
 FakeLocalization::on_shutdown(const rclcpp_lifecycle::State &state)
 {
-  sub_odom_.reset();
+  sub_ground_truth_.reset();
   tf_broadcaster_.reset();
+  tf_listener_.reset();
 
   RCUTILS_LOG_INFO_NAMED(
       get_name(),
@@ -108,19 +126,49 @@ FakeLocalization::on_shutdown(const rclcpp_lifecycle::State &state)
   return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
 }
 
-void FakeLocalization::callback_odom(const nav_msgs::msg::Odometry::SharedPtr msg_odom)
+void FakeLocalization::callback_ground_truth(const nav_msgs::msg::Odometry::SharedPtr msg_odom)
 {
-  RCLCPP_INFO(this->get_logger(), "callback_odom");
+
+  // auto &q = msg_odom->pose.pose.orientation;
+  // RCLCPP_INFO(this->get_logger(), "callback_ground_truth %f, %f, %f", p.x, p.y, p.z);
+
+  geometry_msgs::msg::TransformStamped tf_odom;
+  try {
+    tf_odom = tf_buffer_->lookupTransform(
+      odom_frame_id_, base_frame_id_, msg_odom->header.stamp, rclcpp::Duration::from_seconds(0.1));
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_INFO(
+      this->get_logger(), "Could not transform %s to %s: %s",
+      odom_frame_id_.c_str(), base_frame_id_.c_str(), ex.what());
+    return;
+  }
+
+  tf2::fromMsg(tf_odom.transform, tf_odom_base_);
+  tf2::fromMsg(msg_odom->pose.pose, tf_world_base_);
+  tf_map_odom_ = tf_world_base_ * tf_odom_base_.inverse() * tf_world_map_.inverse();
   auto stamp = tf2_ros::fromMsg(msg_odom->header.stamp);
   tf2::TimePoint transform_expiration = stamp;
+
+  sendWorldToMapTransform(transform_expiration);
   sendMapToOdomTransform(transform_expiration);
+}
+
+void FakeLocalization::sendWorldToMapTransform(const tf2::TimePoint &transform_expiration)
+{
+  geometry_msgs::msg::TransformStamped tmp_tf_stamped;
+  tmp_tf_stamped.header.frame_id = world_frame_id_;
+  tmp_tf_stamped.header.stamp = tf2_ros::toMsg(transform_expiration);
+  tmp_tf_stamped.child_frame_id = map_frame_id_;
+  tf2::convert(tf_world_map_, tmp_tf_stamped.transform);
+  tf_broadcaster_->sendTransform(tmp_tf_stamped);
 }
 
 void FakeLocalization::sendMapToOdomTransform(const tf2::TimePoint &transform_expiration)
 {
   geometry_msgs::msg::TransformStamped tmp_tf_stamped;
-  tmp_tf_stamped.header.frame_id = global_frame_id_;
+  tmp_tf_stamped.header.frame_id = map_frame_id_;
   tmp_tf_stamped.header.stamp = tf2_ros::toMsg(transform_expiration);
   tmp_tf_stamped.child_frame_id = odom_frame_id_;
+  tf2::convert(tf_map_odom_, tmp_tf_stamped.transform);
   tf_broadcaster_->sendTransform(tmp_tf_stamped);
 }
