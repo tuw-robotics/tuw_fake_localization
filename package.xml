@@ -3,7 +3,8 @@
 <package format="3">
   <name>tuw_fake_localization</name>
   <version>0.0.1</version>
-  <description>TODO: Package description</description>
+  <description>Republish odom to TF</description>
+  <maintainer email="alexander.lampalzer@tuwien.ac.at">Alexander Lampalzer</maintainer>
   <maintainer email="markus.bader@tuwien.ac.at">Markus Bader</maintainer>
   <license>BSD-3-Clause</license>
 

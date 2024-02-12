@@ -6,34 +6,26 @@
 #include <thread>
 #include <utility>
 
-#include "lifecycle_msgs/msg/transition.hpp"
-#include "rclcpp/rclcpp.hpp"
-#include "rclcpp/publisher.hpp"
-#include "rclcpp_lifecycle/lifecycle_node.hpp"
-#include "rclcpp_lifecycle/lifecycle_publisher.hpp"
-#include "rcutils/logging_macros.h"
-#include "tf2_ros/buffer.h"
-#include "tf2_ros/message_filter.h"
-#include "tf2_ros/transform_broadcaster.h"
-#include "tf2_ros/transform_listener.h"
-#include "tf2_ros/create_timer_ros.h"
-
-#include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <lifecycle_msgs/msg/transition.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <rclcpp_lifecycle/lifecycle_publisher.hpp>
+#include <rclcpp/publisher.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rcutils/logging_macros.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/create_timer_ros.h>
+#include <tf2_ros/message_filter.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_ros/transform_listener.h>
 
 using namespace std::chrono_literals;
 
 using std::placeholders::_1;
 class FakeLocalization : public rclcpp_lifecycle::LifecycleNode
 {
-  enum Mode{
-    NA = 0,
-    PERFECT_ODOM = 1,
-    GROUND_TRUTH_ODOM = 2
-  };
-
 public:
-
   explicit FakeLocalization(const std::string &node_name, bool intra_process_comms = false);
 
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
@@ -51,8 +43,7 @@ public:
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
   on_shutdown(const rclcpp_lifecycle::State &state);
 
-private: 
-
+private:
   template <typename T>
   void declare_default_parameter(
       const std::string &name,
@@ -79,7 +70,6 @@ private:
   std::string map_frame_id_;
   std::string odom_frame_id_;
   std::string base_frame_id_;
-  Mode mode_;
   tf2::Transform tf_world_base_;
   tf2::Transform tf_world_map_;
   tf2::Transform tf_map_odom_;
