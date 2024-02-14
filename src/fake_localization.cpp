@@ -59,10 +59,21 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
 FakeLocalization::on_activate(const rclcpp_lifecycle::State &state)
 {
   LifecycleNode::on_activate(state);
+  create_bond();
 
   RCUTILS_LOG_INFO_NAMED(get_name(), "on_activate() called.");
 
   sub_ground_truth_ = create_subscription<nav_msgs::msg::Odometry>("odom_ground_truth", 10, std::bind(&FakeLocalization::callback_ground_truth, this, _1));
+
+  return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
+}
+
+rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
+FakeLocalization::on_error(const rclcpp_lifecycle::State &state)
+{
+  LifecycleNode::on_error(state);
+
+  RCUTILS_LOG_INFO_NAMED(get_name(), "on_error() called.");
 
   return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
 }
@@ -155,4 +166,16 @@ void FakeLocalization::sendMapToOdomTransform(const tf2::TimePoint &transform_ex
   tmp_tf_stamped.child_frame_id = odom_frame_id_;
   tf2::convert(tf_map_odom_, tmp_tf_stamped.transform);
   tf_broadcaster_->sendTransform(tmp_tf_stamped);
+}
+
+void FakeLocalization::create_bond()
+{
+  bond_ = std::make_unique<bond::Bond>(
+    std::string("bond"),
+    this->get_name(),
+    shared_from_this());
+
+  bond_->setHeartbeatPeriod(0.10);
+  bond_->setHeartbeatTimeout(4.0);
+  bond_->start();
 }

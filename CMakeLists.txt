@@ -17,6 +17,8 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(lifecycle_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(bondcpp REQUIRED)
+find_package(bond REQUIRED)
 
 include_directories(include)
 add_library(fake_localization src/fake_localization.cpp)
@@ -34,6 +36,8 @@ ament_target_dependencies(
   "nav_msgs"
   "rclcpp"
   "std_msgs"
+  "bondcpp"
+  "bondcpp"
 )
 
 

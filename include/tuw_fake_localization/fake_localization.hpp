@@ -19,6 +19,8 @@
 #include <tf2_ros/message_filter.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
+#include <bondcpp/bond.hpp>
+#include <bond/msg/constants.hpp>
 
 using namespace std::chrono_literals;
 
@@ -43,6 +45,9 @@ public:
   rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
   on_shutdown(const rclcpp_lifecycle::State &state);
 
+  rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
+  on_error(const rclcpp_lifecycle::State &state);
+
 private:
   template <typename T>
   void declare_default_parameter(
@@ -54,6 +59,9 @@ private:
     descriptor.description = description;
     this->declare_parameter<T>(name, value_default, descriptor);
   }
+
+  std::unique_ptr<bond::Bond> bond_{nullptr};
+  void create_bond();
 
   void callback_odom(const nav_msgs::msg::Odometry::SharedPtr msg_odom);
   void callback_ground_truth(const nav_msgs::msg::Odometry::SharedPtr msg_odom);
