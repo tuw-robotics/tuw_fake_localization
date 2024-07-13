@@ -8,44 +8,15 @@ using std::placeholders::_1;
 FakeLocalization::FakeLocalization(const std::string &node_name, bool intra_process_comms)
     : rclcpp_lifecycle::LifecycleNode(node_name, rclcpp::NodeOptions().use_intra_process_comms(intra_process_comms))
 {
-  declare_default_parameter<std::string>("world_frame_id", "world", "Frame id of the world");
-  declare_default_parameter<std::string>("map_frame_id", "map", "Frame id of the map");
-  declare_default_parameter<std::string>("odom_frame_id", "odom", "Frame id of the odometry");
-  declare_default_parameter<std::string>("base_frame_id", "base_link", "Frame id of the base link");
-  declare_default_parameter<double>("offset_x", 0.0, "The x offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
-  declare_default_parameter<double>("offset_y", 0.0, "The y offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
-  declare_default_parameter<double>("offset_z", 0.0, "The z offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
-  declare_default_parameter<double>("offset_yaw", 0.0, "The yaw offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
-  declare_default_parameter<double>("offset_pitch", 0.0, "The pitch offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
-  declare_default_parameter<double>("offset_roll", 0.0, "The roll offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
+  declare_parameters();
 }
 
 rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn
 FakeLocalization::on_configure(const rclcpp_lifecycle::State &)
 {
-  this->get_parameter<std::string>("world_frame_id", world_frame_id_);
-  RCLCPP_INFO(get_logger(), "world_frame_id is set to: [%s]", world_frame_id_.c_str());
-  this->get_parameter<std::string>("map_frame_id", map_frame_id_);
-  RCLCPP_INFO(get_logger(), "map_frame_id is set to: [%s]", map_frame_id_.c_str());
-  this->get_parameter<std::string>("odom_frame_id", odom_frame_id_);
-  RCLCPP_INFO(get_logger(), "odom_frame_id is set to: [%s]", odom_frame_id_.c_str());
-  this->get_parameter<std::string>("base_frame_id", base_frame_id_);
-  RCLCPP_INFO(get_logger(), "base_frame_id is set to: [%s]", base_frame_id_.c_str());
+  read_static_parameters();
+  read_dynamic_parameters();
 
-  double offset_x, offset_y, offset_z, offset_yaw, offset_pitch, offset_roll;
-  this->get_parameter<double>("offset_x", offset_x);
-  this->get_parameter<double>("offset_y", offset_y);
-  this->get_parameter<double>("offset_y", offset_z);
-  this->get_parameter<double>("offset_roll", offset_roll);
-  this->get_parameter<double>("offset_pitch", offset_pitch);
-  this->get_parameter<double>("offset_yaw", offset_yaw);
-  RCLCPP_INFO(get_logger(),
-              "The offset [x, y, z; r, p y] is set to: [%f m, %f m, %f m; %f rad, %f rad, %f rad]",
-              offset_x, offset_y, offset_y, offset_roll, offset_pitch, offset_yaw);
-
-  tf2::Quaternion q;
-  q.setRPY(-offset_roll, -offset_pitch, -offset_yaw);
-  tf_world_map_ = tf2::Transform(q, tf2::Vector3(-offset_x, -offset_y, -offset_z));
 
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -64,6 +35,8 @@ FakeLocalization::on_activate(const rclcpp_lifecycle::State &state)
   RCUTILS_LOG_INFO_NAMED(get_name(), "on_activate() called.");
 
   sub_ground_truth_ = create_subscription<nav_msgs::msg::Odometry>("odom_ground_truth", 10, std::bind(&FakeLocalization::callback_ground_truth, this, _1));
+
+  timer_ = this->create_wall_timer(1000ms, std::bind(&FakeLocalization::read_dynamic_parameters, this));
 
   return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
 }
@@ -97,6 +70,7 @@ FakeLocalization::on_cleanup(const rclcpp_lifecycle::State &)
   sub_ground_truth_.reset();
   tf_broadcaster_.reset();
   tf_listener_.reset();
+  timer_.reset();
 
   RCUTILS_LOG_INFO_NAMED(get_name(), "on cleanup called.");
 
@@ -109,6 +83,7 @@ FakeLocalization::on_shutdown(const rclcpp_lifecycle::State &state)
   sub_ground_truth_.reset();
   tf_broadcaster_.reset();
   tf_listener_.reset();
+  timer_.reset();
 
   RCUTILS_LOG_INFO_NAMED(
       get_name(),
@@ -178,4 +153,63 @@ void FakeLocalization::create_bond()
   bond_->setHeartbeatPeriod(0.10);
   bond_->setHeartbeatTimeout(4.0);
   bond_->start();
+}
+
+
+void FakeLocalization::declare_parameters()
+{
+  declare_default_parameter<std::string>("world_frame_id", "world", "Frame id of the world");
+  declare_default_parameter<std::string>("map_frame_id", "map", "Frame id of the map");
+  declare_default_parameter<std::string>("odom_frame_id", "odom", "Frame id of the odometry");
+  declare_default_parameter<std::string>("base_frame_id", "base_link", "Frame id of the base link");
+  declare_default_parameter<double>("offset.x", 0.0, "The x offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
+  declare_default_parameter<double>("offset.y", 0.0, "The y offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
+  declare_default_parameter<double>("offset.z", 0.0, "The z offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
+  declare_default_parameter<double>("offset.yaw", 0.0, "The yaw offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
+  declare_default_parameter<double>("offset.pitch", 0.0, "The pitch offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
+  declare_default_parameter<double>("offset.roll", 0.0, "The roll offset between the origin of the world (simulator) coordinate frame and the map coordinate frame published by fake_localization.");
+}
+
+void FakeLocalization::read_static_parameters()
+{
+  this->get_parameter<std::string>("world_frame_id", world_frame_id_);
+  RCLCPP_INFO(get_logger(), "world_frame_id is set to: [%s]", world_frame_id_.c_str());
+  this->get_parameter<std::string>("map_frame_id", map_frame_id_);
+  RCLCPP_INFO(get_logger(), "map_frame_id is set to: [%s]", map_frame_id_.c_str());
+  this->get_parameter<std::string>("odom_frame_id", odom_frame_id_);
+  RCLCPP_INFO(get_logger(), "odom_frame_id is set to: [%s]", odom_frame_id_.c_str());
+  this->get_parameter<std::string>("base_frame_id", base_frame_id_);
+  RCLCPP_INFO(get_logger(), "base_frame_id is set to: [%s]", base_frame_id_.c_str());
+
+}
+
+bool FakeLocalization::read_dynamic_parameters()
+{
+    RCLCPP_INFO(get_logger(), "read_dynamic_parameters");
+  static bool first_call = true; /// varible to identify the first time the fnc was called to init all variables
+  bool changes = false;          /// used to identify changes
+
+  double offset_x, offset_y, offset_z, offset_yaw, offset_pitch, offset_roll;
+  this->get_parameter<double>("offset.x", offset_x);
+  this->get_parameter<double>("offset.y", offset_y);
+  this->get_parameter<double>("offset.y", offset_z);
+  this->get_parameter<double>("offset.roll", offset_roll);
+  this->get_parameter<double>("offset.pitch", offset_pitch);
+  this->get_parameter<double>("offset.yaw", offset_yaw);
+
+  tf2::Quaternion q;
+  q.setRPY(-offset_roll, -offset_pitch, -offset_yaw);
+  tf2::Matrix3x3 basis(q);
+  tf2::Vector3 origin(-offset_x, -offset_y, -offset_z);
+  tf2::Transform tf(basis, origin);
+  if(first_call || !(tf_world_map_.getBasis() == basis) || !(tf_world_map_.getOrigin() == origin) )
+  {
+    RCLCPP_INFO(get_logger(),     
+                "The offset [x, y, z; r, p y] is set to: [%f m, %f m, %f m; %f rad, %f rad, %f rad]",
+                offset_x, offset_y, offset_y, offset_roll, offset_pitch, offset_yaw);
+    changes = true;
+  }
+  tf_world_map_ = tf;
+  first_call = false;
+  return changes;
 }

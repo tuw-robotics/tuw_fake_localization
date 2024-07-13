@@ -84,4 +84,12 @@ private:
   tf2::Transform tf_odom_base_;
   geometry_msgs::msg::TransformStamped tf_stamped_odom_;
   geometry_msgs::msg::TransformStamped tf_stamped_ground_truth_;
+
+
+
+  rclcpp::TimerBase::SharedPtr timer_;
+
+  void declare_parameters();                           // declare parameters
+  void read_static_parameters();                       // ready the static parameters
+  bool read_dynamic_parameters();                      // ready the dynamic parameters and returns true on changes
 };
